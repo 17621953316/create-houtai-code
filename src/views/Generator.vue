@@ -38,6 +38,9 @@
           </el-form>
         </el-card>
         <el-card shadow="never" class="config-card">
+          <TableConfig v-model="config.table" />
+        </el-card>
+        <el-card shadow="never" class="config-card">
           <SearchFieldConfig v-model="config.searchFields" />
         </el-card>
       </div>
@@ -64,12 +67,14 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Document, CopyDocument, Download } from '@element-plus/icons-vue'
 import SearchFieldConfig from '@/components/SearchFieldConfig.vue'
+import TableConfig from '@/components/TableConfig.vue'
 import { defaultConfig } from '@/config/defaultConfig'
 import { generatePageCode } from '@/generator'
 
 const config = reactive({
   pageName: defaultConfig.pageName,
   api: { ...defaultConfig.api },
+  table: JSON.parse(JSON.stringify(defaultConfig.table)),
   searchFields: []
 })
 
@@ -146,7 +151,7 @@ function downloadCode() {
   overflow: hidden;
 }
 .left-panel {
-  flex: 0 0 480px;
+  flex: 0 0 520px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
