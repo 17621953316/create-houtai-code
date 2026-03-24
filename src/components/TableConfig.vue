@@ -13,6 +13,9 @@
           </template>
         </div>
       </el-form-item>
+      <el-form-item label="多选列">
+        <el-switch v-model="local.showSelection" />
+      </el-form-item>
       <el-form-item label="序号列">
         <div class="inline-row">
           <el-switch v-model="local.showIndex" />
@@ -199,6 +202,7 @@ function tableSnapshot(obj) {
     fixedHeader: obj.fixedHeader,
     height: obj.height,
     showIndex: obj.showIndex,
+    showSelection: obj.showSelection,
     indexLabel: obj.indexLabel,
     indexWidth: obj.indexWidth,
     mockRows: obj.mockRows || [],
@@ -213,6 +217,7 @@ function applySnapshot(v) {
   local.fixedHeader = m.fixedHeader
   local.height = m.height
   local.showIndex = m.showIndex
+  local.showSelection = !!m.showSelection
   local.indexLabel = m.indexLabel
   local.indexWidth = m.indexWidth
   local.mockRows = m.mockRows

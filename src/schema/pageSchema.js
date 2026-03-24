@@ -46,6 +46,7 @@ export const pageConfigSchema = {
       properties: {
         fixedHeader: { type: 'boolean' },
         height: { type: 'string' },
+        showSelection: { type: 'boolean' },
         showIndex: { type: 'boolean' },
         indexLabel: { type: 'string' },
         indexWidth: { type: 'string' },

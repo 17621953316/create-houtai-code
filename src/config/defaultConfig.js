@@ -4,6 +4,7 @@
 export const defaultTableConfig = {
   fixedHeader: false,
   height: '440',
+  showSelection: false,
   showIndex: true,
   indexLabel: '序号',
   indexWidth: '60',

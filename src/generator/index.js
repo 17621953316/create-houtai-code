@@ -107,7 +107,8 @@ function collectOperationHandlers(buttons) {
     const name = (b.handler && String(b.handler).trim()) || ''
     if (name) set.add(name)
   })
-  return [...set]
+  // Handlebars {{#each}} 需要对象上的 name，不能对字符串用 {{name}}
+  return [...set].map((name) => ({ name }))
 }
 
 /**
@@ -118,6 +119,7 @@ function preprocessTable(tableConf) {
   const fixedHeader = !!t.fixedHeader
   const height = (t.height != null && String(t.height).trim()) ? String(t.height).trim() : '440'
   const showIndex = t.showIndex !== false
+  const showSelection = !!t.showSelection
   let columns = (t.columns || []).map((c) => ({
     key: c.key || 'col',
     label: c.label || c.key || '列',
@@ -169,6 +171,7 @@ function preprocessTable(tableConf) {
     fixedHeader,
     height,
     showIndex,
+    showSelection,
     indexLabel: t.indexLabel || '序号',
     indexWidth: t.indexWidth != null && String(t.indexWidth).trim() ? String(t.indexWidth).trim() : '60',
     columns,
@@ -226,10 +229,14 @@ function getTemplateSource() {
                     label-width="130px"
                     label-position="right">
                     {{#each (chunk searchFields 3)}}
-                    <el-row :gutter="ROW_GUTTER">
+                    <el-row
+                        :gutter="ROW_GUTTER">
                         {{#each this}}
-                        <el-col :span="ROW_SPAN">
-                            <el-form-item label="{{label}}:" prop="{{key}}">
+                        <el-col
+                            :span="ROW_SPAN">
+                            <el-form-item
+                                label="{{label}}:"
+                                prop="{{key}}">
                                 {{#if (eq type "input")}}
                                 <el-input
                                     v-model="form.{{key}}"
@@ -312,16 +319,27 @@ function getTemplateSource() {
                                     :collapse-tags="{{cascaderMultiple}}"
                                     clearable
                                     :options="{{optionsKey}}"
-                                    {{#if cascaderMultiple}}:props="{ multiple: true }"{{/if}} />
+                                    {{#if cascaderMultiple}}
+                                    :props="{ multiple: true }"
+                                    {{/if}} />
                                 {{/if}}
                             </el-form-item>
                         </el-col>
                         {{/each}}
                         {{#if @last}}
-                        <el-col :span="ROW_SPAN">
+                        <el-col
+                            :span="ROW_SPAN">
                             <div class="search-area">
-                                <el-button type="primary" @click="resetPageAndSearch">查询</el-button>
-                                <el-button type="default" class="reset-button" @click="resetSearchForm">重置</el-button>
+                                <el-button
+                                    type="primary"
+                                    @click="resetPageAndSearch">查询</el-button>
+                                <el-button
+                                    type="default"
+                                    class="reset-button"
+                                    @click="resetSearchForm">重置</el-button>
+                                <el-button
+                                    type="warning"
+                                    @click="handleExport">导出</el-button>
                             </div>
                         </el-col>
                         {{/if}}
@@ -331,6 +349,7 @@ function getTemplateSource() {
             </div>
             <div class="table-area">
                 <el-table
+                    ref="tableRef"
                     v-loading="tableLoading"
                     :data="tableData"
                     highlight-current-row
@@ -338,29 +357,55 @@ function getTemplateSource() {
                     stripe
                     {{#if table.fixedHeader}}
                     :height="tableHeight"
+                    {{/if}}
+                    {{#if table.showSelection}}
+                    @selection-change="handleSelectionChange"
                     {{/if}}>
+                    {{#if table.showSelection}}
+                    <el-table-column
+                        type="selection"
+                        width="55"
+                        align="center" />
+                    {{/if}}
                     {{#if table.showIndex}}
-                    <el-table-column type="index" label="{{table.indexLabel}}" width="{{table.indexWidth}}" align="center" />
+                    <el-table-column
+                        type="index"
+                        label="{{table.indexLabel}}"
+                        width="{{table.indexWidth}}"
+                        align="center" />
                     {{/if}}
                     {{#each table.columns}}
                     <el-table-column
                         prop="{{key}}"
                         label="{{label}}"
-                        {{#if hasWidth}}width="{{width}}"{{/if}}
-                        {{#if hasMinWidth}}min-width="{{minWidth}}"{{/if}}
+                        {{#if hasWidth}}
+                        width="{{width}}"
+                        {{/if}}
+                        {{#if hasMinWidth}}
+                        min-width="{{minWidth}}"
+                        {{/if}}
                         align="{{align}}"
-                        {{#if hasFixed}}fixed="{{fixed}}"{{/if}}
-                        {{#if sortable}}sortable{{/if}} />
+                        {{#if hasFixed}}
+                        fixed="{{fixed}}"
+                        {{/if}}
+                        {{#if sortable}}
+                        sortable
+                        {{/if}} />
                     {{/each}}
                     {{#if table.operation.enabled}}
                     <el-table-column
                         label="{{table.operation.label}}"
                         width="{{table.operation.width}}"
                         align="center"
-                        {{#if table.operation.hasFixed}}fixed="{{table.operation.fixed}}"{{/if}}>
+                        {{#if table.operation.hasFixed}}
+                        fixed="{{table.operation.fixed}}"
+                        {{/if}}>
                         <template #default="scope">
                             {{#each table.operation.buttons}}
-                            <el-button type="primary" link @click="{{handler}}(scope.row)">{{text}}</el-button>
+                            <el-button
+                                type="primary"
+                                link
+                                @click="{{handler}}(scope.row)">{{text}}</el-button>
                             {{/each}}
                         </template>
                     </el-table-column>
@@ -428,6 +473,9 @@ export default {
             {{/if}}
             {{/each}}
             tableData: {{{table.tableDataInitial}}},
+            {{#if table.showSelection}}
+            selectedRows: [],
+            {{/if}}
             pageSize: 10,
             pageIndex: 1,
             totalNumber: 0,
@@ -463,7 +511,6 @@ export default {
             return [];
         },
         resetPageAndSearch() {
-            this.tableData = [];
             this.totalNumber = 0;
             this.totalPage = 0;
             this.pageIndex = 1;
@@ -508,19 +555,29 @@ export default {
             const queryData = this.getAllQueryData();
             try {
                 this.tableLoading = true;
+                // TODO: 替换为真实接口调用
                 // const res = await api.getList(queryData);
-                // this.tableData = res.items;
-                // this.totalPage = res.totalPage;
-                // this.totalNumber = res.totalNumber;
-                this.tableData = [];
-                this.totalPage = 0;
-                this.totalNumber = 0;
+                // this.tableData = res.items || [];
+                // this.totalPage = res.totalPage || 0;
+                // this.totalNumber = res.totalNumber || 0;
+                console.log('queryData', queryData);
             } catch (err) {
                 console.error(err);
             } finally {
                 this.tableLoading = false;
             }
         },
+        handleExport() {
+            const queryData = this.getAllQueryData();
+            // TODO: 替换为真实导出接口
+            console.log('export', queryData);
+            this.$message.info('导出功能待接入');
+        },
+        {{#if table.showSelection}}
+        handleSelectionChange(rows) {
+            this.selectedRows = rows;
+        },
+        {{/if}}
         {{#each table.operationHandlers}}
         {{name}}(row) {
             console.log('{{name}}', row);
