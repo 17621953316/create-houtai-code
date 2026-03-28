@@ -41,6 +41,52 @@ export const pageConfigSchema = {
       }
     },
     tableColumns: { type: 'array' },
+    table: {
+      type: 'object',
+      properties: {
+        fixedHeader: { type: 'boolean' },
+        height: { type: 'string' },
+        showSelection: { type: 'boolean' },
+        showIndex: { type: 'boolean' },
+        indexLabel: { type: 'string' },
+        indexWidth: { type: 'string' },
+        mockRows: { type: 'array' },
+        columns: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              key: { type: 'string' },
+              label: { type: 'string' },
+              width: { type: 'string' },
+              minWidth: { type: 'string' },
+              align: { type: 'string', enum: ['left', 'center', 'right'] },
+              fixed: { type: 'string' },
+              sortable: { type: 'boolean' }
+            }
+          }
+        },
+        operation: {
+          type: 'object',
+          properties: {
+            enabled: { type: 'boolean' },
+            label: { type: 'string' },
+            width: { type: 'string' },
+            fixed: { type: 'string' },
+            buttons: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  text: { type: 'string' },
+                  handler: { type: 'string' }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     searchFields: {
       type: 'array',
       items: {

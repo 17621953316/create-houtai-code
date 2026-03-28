@@ -14,6 +14,21 @@ Handlebars.registerHelper('chunk', function (arr, cols) {
   return result
 })
 
+function escapeJsSingle(str) {
+  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+}
+
+/** 单行内联字面量（下拉 options 等），字符串用单引号 */
+function inlineLiteral(val) {
+  if (val === null || val === undefined) return 'null'
+  const t = typeof val
+  if (t === 'number' && Number.isFinite(val)) return String(val)
+  if (t === 'boolean') return val ? 'true' : 'false'
+  if (t === 'string') return `'${escapeJsSingle(val)}'`
+  if (Array.isArray(val) || t === 'object') return JSON.stringify(val)
+  return 'null'
+}
+
 /**
  * 预处理 searchFields
  */
@@ -45,12 +60,125 @@ function preprocessSearchFields(searchFields) {
     const hasOpts = !!(field.options && field.options.length)
     field.hasInlineOptions = hasOpts
     if (hasOpts) {
+      const optLineIndent = ' '.repeat(16)
       field.optionsData = field.options
-        .map((o) => `{ value: ${JSON.stringify(o.value)}, label: ${JSON.stringify(o.label)} }`)
-        .join(',\n        ')
+        .map((o) => `{ value: ${inlineLiteral(o.value)}, label: ${inlineLiteral(o.label)} }`)
+        .join(`,\n${optLineIndent}`)
     }
     return field
   })
+}
+
+const GEN_INDENT = 4
+
+/**
+ * 将配置数据转为 JS 字面量，字符串统一使用单引号；缩进与生成模板一致（每级 4 空格）
+ */
+function toJsLiteral(val, indent = 12) {
+  const pad = (n) => ' '.repeat(n)
+  if (val === null || val === undefined) return 'null'
+  const t = typeof val
+  if (t === 'number' && Number.isFinite(val)) return String(val)
+  if (t === 'boolean') return val ? 'true' : 'false'
+  if (t === 'string') return `'${escapeJsSingle(val)}'`
+  if (Array.isArray(val)) {
+    if (!val.length) return '[]'
+    const inner = indent + GEN_INDENT
+    const lines = val.map((item) => `${pad(inner)}${toJsLiteral(item, inner)}`)
+    return `[\n${lines.join(',\n')}\n${pad(indent)}]`
+  }
+  if (t === 'object') {
+    const keys = Object.keys(val)
+    if (!keys.length) return '{}'
+    const inner = indent + GEN_INDENT
+    const lines = keys.map((k) => {
+      const keyStr = /^[a-zA-Z_$][\w$]*$/.test(k) ? k : `'${escapeJsSingle(k)}'`
+      return `${pad(inner)}${keyStr}: ${toJsLiteral(val[k], inner)}`
+    })
+    return `{\n${lines.join(',\n')}\n${pad(indent)}}`
+  }
+  return 'null'
+}
+
+function collectOperationHandlers(buttons) {
+  if (!buttons?.length) return []
+  const set = new Set()
+  buttons.forEach((b) => {
+    const name = (b.handler && String(b.handler).trim()) || ''
+    if (name) set.add(name)
+  })
+  // Handlebars {{#each}} 需要对象上的 name，不能对字符串用 {{name}}
+  return [...set].map((name) => ({ name }))
+}
+
+/**
+ * 预处理表格配置，供模板渲染
+ */
+function preprocessTable(tableConf) {
+  const t = tableConf && typeof tableConf === 'object' ? tableConf : {}
+  const fixedHeader = !!t.fixedHeader
+  const height = (t.height != null && String(t.height).trim()) ? String(t.height).trim() : '440'
+  const showIndex = t.showIndex !== false
+  const showSelection = !!t.showSelection
+  let columns = (t.columns || []).map((c) => ({
+    key: c.key || 'col',
+    label: c.label || c.key || '列',
+    width: c.width,
+    minWidth: c.minWidth,
+    align: c.align || 'left',
+    fixed: c.fixed === 'left' || c.fixed === 'right' ? c.fixed : '',
+    sortable: !!c.sortable,
+    hasWidth: !!(c.width && String(c.width).trim()),
+    hasMinWidth: !!(c.minWidth && String(c.minWidth).trim()),
+    hasFixed: c.fixed === 'left' || c.fixed === 'right'
+  }))
+  if (!columns.length) {
+    columns = [{
+      key: 'id',
+      label: 'ID',
+      width: '80',
+      minWidth: '',
+      align: 'center',
+      fixed: '',
+      sortable: false,
+      hasWidth: true,
+      hasMinWidth: false,
+      hasFixed: false
+    }]
+  }
+  const op = t.operation || {}
+  const opEnabled = !!op.enabled
+  let buttons = opEnabled ? [...(op.buttons || [])].filter((b) => b && String(b.text || '').trim()) : []
+  if (opEnabled && !buttons.length) {
+    buttons = [{ text: '详情', handler: 'handleDetail' }]
+  }
+  const opFixed = op.fixed === 'left' || op.fixed === 'right' ? op.fixed : ''
+  const operation = {
+    enabled: opEnabled,
+    label: op.label || '操作',
+    width: op.width != null && String(op.width).trim() ? String(op.width).trim() : '160',
+    fixed: opFixed,
+    hasFixed: opEnabled && !!opFixed,
+    buttons: buttons.map((b) => ({
+      text: b.text,
+      handler: (b.handler && String(b.handler).trim()) || 'handleRowClick'
+    }))
+  }
+  const mockRows = Array.isArray(t.mockRows) ? t.mockRows : []
+  const tableDataInitial = mockRows.length ? toJsLiteral(mockRows, 12) : '[]'
+  const operationHandlers = opEnabled ? collectOperationHandlers(operation.buttons) : []
+  return {
+    fixedHeader,
+    height,
+    showIndex,
+    showSelection,
+    indexLabel: t.indexLabel || '序号',
+    indexWidth: t.indexWidth != null && String(t.indexWidth).trim() ? String(t.indexWidth).trim() : '60',
+    columns,
+    operation,
+    tableDataInitial,
+    operationHandlers
+  }
 }
 
 const CN_MAP = { 用: 'yong', 户: 'hu', 管: 'guan', 理: 'li', 订: 'ding', 单: 'dan', 车: 'che', 商: 'shang', 地: 'di', 区: 'qu', 时: 'shi', 间: 'jian', 状: 'zhuang', 态: 'tai' }
@@ -73,6 +201,7 @@ function toComponentName(name) {
 
 export function generatePageCode(config) {
   const searchFields = preprocessSearchFields(config.searchFields || [])
+  const table = preprocessTable(config.table)
   const pageNameSlug = toSlug(config.pageName || 'page')
   const api = config.api || { list: '/api/list' }
 
@@ -81,6 +210,7 @@ export function generatePageCode(config) {
     pageNameSlug,
     componentName: toComponentName(config.pageName || 'page'),
     searchFields,
+    table,
     api
   }
 
@@ -90,151 +220,210 @@ export function generatePageCode(config) {
 
 function getTemplateSource() {
   return `<template>
-  <div class="pg-{{pageNameSlug}}">
-    <div class="content-section">
-      <div class="top-section">
-        <el-form
-          ref="searchForm"
-          :model="form"
-          label-width="130px"
-          label-position="right">
-          {{#each (chunk searchFields 3)}}
-          <el-row :gutter="ROW_GUTTER">
-            {{#each this}}
-            <el-col :span="ROW_SPAN">
-              <el-form-item label="{{label}}:" prop="{{key}}">
-                {{#if (eq type "input")}}
-                <el-input
-                  v-model="form.{{key}}"
-                  placeholder="{{placeholder}}"
-                  clearable
-                  @keyup.enter="resetPageAndSearch" />
-                {{/if}}
-                {{#if (eq type "select")}}
-                <el-select
-                  v-model="form.{{key}}"
-                  style="width: 100%;"
-                  placeholder="{{placeholder}}">
-                  {{#if hasInlineOptions}}
-                  <el-option
-                    v-for="item in {{optionsKey}}"
-                    :key="item.value"
-                    :label="item.label"
-                    :value="item.value" />
-                  {{else}}
-                  <el-option
-                    v-for="item in {{optionsKey}}"
-                    :key="item.code"
-                    :label="item.desc"
-                    :value="item.code" />
-                  {{/if}}
-                </el-select>
-                {{/if}}
-                {{#if (eq type "date")}}
-                <el-date-picker
-                  v-model="form.{{key}}"
-                  type="date"
-                  placeholder="{{placeholder}}"
-                  value-format="{{valueFormat}}"
-                  clearable
-                  style="width: 100%;" />
-                {{/if}}
-                {{#if (eq type "dateRange")}}
-                <el-date-picker
-                  v-model="form.{{key}}"
-                  type="daterange"
-                  unlink-panels
-                  range-separator="-"
-                  start-placeholder="{{startPlaceholder}}"
-                  end-placeholder="{{endPlaceholder}}"
-                  value-format="{{valueFormat}}"
-                  clearable
-                  style="width: 100%;"
-                  @change="formatDate('{{key}}')" />
-                {{/if}}
-                {{#if (eq type "selectMultiple")}}
-                <el-select
-                  v-model="form.{{key}}"
-                  placeholder="{{placeholder}}"
-                  multiple
-                  clearable
-                  collapse-tags
-                  collapse-tags-tooltip
-                  style="width: 100%;">
-                  {{#if hasInlineOptions}}
-                  <el-option
-                    v-for="item in {{optionsKey}}"
-                    :key="item.value"
-                    :label="item.label"
-                    :value="item.value" />
-                  {{else}}
-                  <el-option
-                    v-for="item in {{optionsKey}}"
-                    :key="item.code"
-                    :label="item.desc"
-                    :value="item.code" />
-                  {{/if}}
-                </el-select>
-                {{/if}}
-                {{#if (eq type "cascader")}}
-                <el-cascader
-                  v-model="form.{{key}}"
-                  style="width: 100%;"
-                  filterable
-                  placeholder="{{placeholder}}"
-                  :collapse-tags="{{cascaderMultiple}}"
-                  clearable
-                  :options="{{optionsKey}}"
-                  {{#if cascaderMultiple}}:props="{ multiple: true }"{{/if}} />
-                {{/if}}
-              </el-form-item>
-            </el-col>
-            {{/each}}
-            {{#if @last}}
-            <el-col :span="ROW_SPAN">
-              <div class="search-area">
-                <el-button type="primary" @click="resetPageAndSearch">查询</el-button>
-                <el-button type="default" class="reset-button" @click="resetSearchForm">重置</el-button>
-              </div>
-            </el-col>
-            {{/if}}
-          </el-row>
-          {{/each}}
-        </el-form>
-      </div>
-      <div class="table-area">
-        <el-table
-          v-loading="tableLoading"
-          :data="tableData"
-          highlight-current-row
-          :header-row-style="headStyle"
-          stripe>
-          <el-table-column type="index" label="序号" width="60" align="center" />
-          <el-table-column prop="id" label="ID" width="80" align="center" />
-          <el-table-column label="操作" width="150" fixed="right" align="center">
-            <template #default="scope">
-              <el-button
-                color="#409eff"
-                type="text"
-                @click="handleDetail(scope.row)">
-                详情
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div class="pagination-area">
-          <el-pagination
-            v-model:current-page="pageIndex"
-            background
-            :page-size="pageSize"
-            :total="totalNumber"
-            :page-count="totalPage"
-            layout="total, prev, pager, next"
-            @current-change="handleCurrentChange" />
+    <div class="pg-{{pageNameSlug}}">
+        <div class="content-section">
+            <div class="top-section">
+                <el-form
+                    ref="searchForm"
+                    :model="form"
+                    label-width="130px"
+                    label-position="right">
+                    {{#each (chunk searchFields 3)}}
+                    <el-row
+                        :gutter="ROW_GUTTER">
+                        {{#each this}}
+                        <el-col
+                            :span="ROW_SPAN">
+                            <el-form-item
+                                label="{{label}}:"
+                                prop="{{key}}">
+                                {{#if (eq type "input")}}
+                                <el-input
+                                    v-model="form.{{key}}"
+                                    placeholder="{{placeholder}}"
+                                    clearable
+                                    @keyup.enter="resetPageAndSearch" />
+                                {{/if}}
+                                {{#if (eq type "select")}}
+                                <el-select
+                                    v-model="form.{{key}}"
+                                    style="width: 100%;"
+                                    placeholder="{{placeholder}}">
+                                    {{#if hasInlineOptions}}
+                                    <el-option
+                                        v-for="item in {{optionsKey}}"
+                                        :key="item.value"
+                                        :label="item.label"
+                                        :value="item.value" />
+                                    {{else}}
+                                    <el-option
+                                        v-for="item in {{optionsKey}}"
+                                        :key="item.code"
+                                        :label="item.desc"
+                                        :value="item.code" />
+                                    {{/if}}
+                                </el-select>
+                                {{/if}}
+                                {{#if (eq type "date")}}
+                                <el-date-picker
+                                    v-model="form.{{key}}"
+                                    type="date"
+                                    placeholder="{{placeholder}}"
+                                    value-format="{{valueFormat}}"
+                                    clearable
+                                    style="width: 100%;" />
+                                {{/if}}
+                                {{#if (eq type "dateRange")}}
+                                <el-date-picker
+                                    v-model="form.{{key}}"
+                                    type="daterange"
+                                    unlink-panels
+                                    range-separator="-"
+                                    start-placeholder="{{startPlaceholder}}"
+                                    end-placeholder="{{endPlaceholder}}"
+                                    value-format="{{valueFormat}}"
+                                    clearable
+                                    style="width: 100%;"
+                                    @change="formatDate('{{key}}')" />
+                                {{/if}}
+                                {{#if (eq type "selectMultiple")}}
+                                <el-select
+                                    v-model="form.{{key}}"
+                                    placeholder="{{placeholder}}"
+                                    multiple
+                                    clearable
+                                    collapse-tags
+                                    collapse-tags-tooltip
+                                    style="width: 100%;">
+                                    {{#if hasInlineOptions}}
+                                    <el-option
+                                        v-for="item in {{optionsKey}}"
+                                        :key="item.value"
+                                        :label="item.label"
+                                        :value="item.value" />
+                                    {{else}}
+                                    <el-option
+                                        v-for="item in {{optionsKey}}"
+                                        :key="item.code"
+                                        :label="item.desc"
+                                        :value="item.code" />
+                                    {{/if}}
+                                </el-select>
+                                {{/if}}
+                                {{#if (eq type "cascader")}}
+                                <el-cascader
+                                    v-model="form.{{key}}"
+                                    style="width: 100%;"
+                                    filterable
+                                    placeholder="{{placeholder}}"
+                                    :collapse-tags="{{cascaderMultiple}}"
+                                    clearable
+                                    :options="{{optionsKey}}"
+                                    {{#if cascaderMultiple}}
+                                    :props="{ multiple: true }"
+                                    {{/if}} />
+                                {{/if}}
+                            </el-form-item>
+                        </el-col>
+                        {{/each}}
+                        {{#if @last}}
+                        <el-col
+                            :span="ROW_SPAN">
+                            <div class="search-area">
+                                <el-button
+                                    type="primary"
+                                    @click="resetPageAndSearch">查询</el-button>
+                                <el-button
+                                    type="default"
+                                    class="reset-button"
+                                    @click="resetSearchForm">重置</el-button>
+                                <el-button
+                                    type="warning"
+                                    @click="handleExport">导出</el-button>
+                            </div>
+                        </el-col>
+                        {{/if}}
+                    </el-row>
+                    {{/each}}
+                </el-form>
+            </div>
+            <div class="table-area">
+                <el-table
+                    ref="tableRef"
+                    v-loading="tableLoading"
+                    :data="tableData"
+                    highlight-current-row
+                    :header-row-style="headStyle"
+                    stripe
+                    {{#if table.fixedHeader}}
+                    :height="tableHeight"
+                    {{/if}}
+                    {{#if table.showSelection}}
+                    @selection-change="handleSelectionChange"
+                    {{/if}}>
+                    {{#if table.showSelection}}
+                    <el-table-column
+                        type="selection"
+                        width="55"
+                        align="center" />
+                    {{/if}}
+                    {{#if table.showIndex}}
+                    <el-table-column
+                        type="index"
+                        label="{{table.indexLabel}}"
+                        width="{{table.indexWidth}}"
+                        align="center" />
+                    {{/if}}
+                    {{#each table.columns}}
+                    <el-table-column
+                        prop="{{key}}"
+                        label="{{label}}"
+                        {{#if hasWidth}}
+                        width="{{width}}"
+                        {{/if}}
+                        {{#if hasMinWidth}}
+                        min-width="{{minWidth}}"
+                        {{/if}}
+                        align="{{align}}"
+                        {{#if hasFixed}}
+                        fixed="{{fixed}}"
+                        {{/if}}
+                        {{#if sortable}}
+                        sortable
+                        {{/if}} />
+                    {{/each}}
+                    {{#if table.operation.enabled}}
+                    <el-table-column
+                        label="{{table.operation.label}}"
+                        width="{{table.operation.width}}"
+                        align="center"
+                        {{#if table.operation.hasFixed}}
+                        fixed="{{table.operation.fixed}}"
+                        {{/if}}>
+                        <template #default="scope">
+                            {{#each table.operation.buttons}}
+                            <el-button
+                                type="primary"
+                                link
+                                @click="{{handler}}(scope.row)">{{text}}</el-button>
+                            {{/each}}
+                        </template>
+                    </el-table-column>
+                    {{/if}}
+                </el-table>
+                <div class="pagination-area">
+                    <el-pagination
+                        v-model:current-page="pageIndex"
+                        background
+                        :page-size="pageSize"
+                        :total="totalNumber"
+                        :page-count="totalPage"
+                        layout="total, prev, pager, next"
+                        @current-change="handleCurrentChange" />
+                </div>
+            </div>
         </div>
-      </div>
     </div>
-  </div>
 </template>
 
 <script>
@@ -242,182 +431,201 @@ const ROW_GUTTER = 24;
 const ROW_SPAN = 8;
 
 export default {
-  name: '{{componentName}}',
-  data() {
-    return {
-      tableLoading: false,
-      headStyle: {
-        color: '#000000a6',
-        background: '#fafafa',
-      },
-      form: {
-        {{#each searchFields}}
-        {{key}}: {{{defaultValue}}},
+    name: '{{componentName}}',
+    data() {
+        return {
+            tableLoading: false,
+            {{#if table.fixedHeader}}
+            tableHeight: '{{table.height}}',
+            {{else}}
+            tableHeight: null,
+            {{/if}}
+            headStyle: {
+                color: 'rgba(0, 0, 0, 0.65)',
+                background: '#fafafa',
+            },
+            form: {
+                {{#each searchFields}}
+                {{key}}: {{{defaultValue}}},
+                {{/each}}
+            },
+            {{#each searchFields}}
+            {{#if (eq type "select")}}
+            {{optionsKey}}: [
+                {{#if hasInlineOptions}}
+                {{{optionsData}}}
+                {{else}}
+                // { code: '1', desc: '选项1' },
+                {{/if}}
+            ],
+            {{/if}}
+            {{#if (eq type "selectMultiple")}}
+            {{optionsKey}}: [
+                {{#if hasInlineOptions}}
+                {{{optionsData}}}
+                {{else}}
+                // { code: '1', desc: '选项1' },
+                {{/if}}
+            ],
+            {{/if}}
+            {{#if (eq type "cascader")}}
+            {{optionsKey}}: [],
+            {{/if}}
+            {{/each}}
+            tableData: {{{table.tableDataInitial}}},
+            {{#if table.showSelection}}
+            selectedRows: [],
+            {{/if}}
+            pageSize: 10,
+            pageIndex: 1,
+            totalNumber: 0,
+            totalPage: 0,
+            ROW_SPAN,
+            ROW_GUTTER,
+        };
+    },
+    mounted() {
+        this.init();
+    },
+    methods: {
+        init() {
+            // TODO: 获取下拉选项等初始化数据
+            // await this.fetchOptions();
+            this.resetPageAndSearch();
+        },
+        formatDate(fieldKey) {
+            if (this.form[fieldKey] === null) {
+                setTimeout(() => {
+                    this.form[fieldKey] = [];
+                }, 200);
+            }
+        },
+        getTime(date, ifAddOneDay) {
+            const str = new Date(date);
+            return date ? (ifAddOneDay ? str.getTime() + 24 * 60 * 60 * 1000 : str.getTime()) : '';
+        },
+        formatCascaderList(data) {
+            if (data && Array.isArray(data)) {
+                return data.map((i) => (Array.isArray(i) ? i[i.length - 1] : i));
+            }
+            return [];
+        },
+        resetPageAndSearch() {
+            this.totalNumber = 0;
+            this.totalPage = 0;
+            this.pageIndex = 1;
+            this.searchTableData();
+        },
+        resetSearchForm() {
+            this.$refs.searchForm.resetFields();
+            this.pageIndex = 1;
+            this.totalNumber = 0;
+            this.totalPage = 0;
+            this.$nextTick(() => {
+                this.searchTableData();
+            });
+        },
+        handleCurrentChange(val) {
+            this.pageIndex = val;
+            this.$nextTick(() => {
+                this.searchTableData();
+            });
+        },
+        getAllQueryData() {
+            const queryData = {
+                pageIndex: this.pageIndex,
+                pageSize: this.pageSize,
+                ...this.form,
+            };
+            {{#each searchFields}}
+            {{#if (eq type "dateRange")}}
+            if (this.form.{{key}} && this.form.{{key}}.length === 2) {
+                queryData.{{key}}Start = this.getTime(this.form.{{key}}[0]);
+                queryData.{{key}}End = this.getTime(this.form.{{key}}[1], true);
+            }
+            delete queryData.{{key}};
+            {{/if}}
+            {{#if (eq type "cascader")}}
+            queryData.{{key}} = this.formatCascaderList(this.form.{{key}});
+            {{/if}}
+            {{/each}}
+            return queryData;
+        },
+        async searchTableData() {
+            const queryData = this.getAllQueryData();
+            try {
+                this.tableLoading = true;
+                // TODO: 替换为真实接口调用
+                // const res = await api.getList(queryData);
+                // this.tableData = res.items || [];
+                // this.totalPage = res.totalPage || 0;
+                // this.totalNumber = res.totalNumber || 0;
+                console.log('queryData', queryData);
+            } catch (err) {
+                console.error(err);
+            } finally {
+                this.tableLoading = false;
+            }
+        },
+        handleExport() {
+            const queryData = this.getAllQueryData();
+            // TODO: 替换为真实导出接口
+            console.log('export', queryData);
+            this.$message.info('导出功能待接入');
+        },
+        {{#if table.showSelection}}
+        handleSelectionChange(rows) {
+            this.selectedRows = rows;
+        },
+        {{/if}}
+        {{#each table.operationHandlers}}
+        {{name}}(row) {
+            console.log('{{name}}', row);
+        },
         {{/each}}
-      },
-      {{#each searchFields}}
-      {{#if (eq type "select")}}
-      {{optionsKey}}: [
-        {{#if hasInlineOptions}}
-        {{{optionsData}}}
-        {{else}}
-        // { code: '1', desc: '选项1' },
-        {{/if}}
-      ],
-      {{/if}}
-      {{#if (eq type "selectMultiple")}}
-      {{optionsKey}}: [
-        {{#if hasInlineOptions}}
-        {{{optionsData}}}
-        {{else}}
-        // { code: '1', desc: '选项1' },
-        {{/if}}
-      ],
-      {{/if}}
-      {{#if (eq type "cascader")}}
-      {{optionsKey}}: [],
-      {{/if}}
-      {{/each}}
-      tableData: [],
-      pageSize: 10,
-      pageIndex: 1,
-      totalNumber: 0,
-      totalPage: 0,
-      ROW_SPAN,
-      ROW_GUTTER,
-    };
-  },
-  mounted() {
-    this.init();
-  },
-  methods: {
-    init() {
-      // TODO: 获取下拉选项等初始化数据
-      // await this.fetchOptions();
-      this.resetPageAndSearch();
     },
-    formatDate(fieldKey) {
-      if (this.form[fieldKey] === null) {
-        setTimeout(() => {
-          this.form[fieldKey] = [];
-        }, 200);
-      }
-    },
-    getTime(date, ifAddOneDay) {
-      const str = new Date(date);
-      return date ? (ifAddOneDay ? str.getTime() + 24 * 60 * 60 * 1000 : str.getTime()) : '';
-    },
-    formatCascaderList(data) {
-      if (data && Array.isArray(data)) {
-        return data.map((i) => (Array.isArray(i) ? i[i.length - 1] : i));
-      }
-      return [];
-    },
-    resetPageAndSearch() {
-      this.tableData = [];
-      this.totalNumber = 0;
-      this.totalPage = 0;
-      this.pageIndex = 1;
-      this.searchTableData();
-    },
-    resetSearchForm() {
-      this.$refs.searchForm.resetFields();
-      this.pageIndex = 1;
-      this.totalNumber = 0;
-      this.totalPage = 0;
-      this.$nextTick(() => {
-        this.searchTableData();
-      });
-    },
-    handleCurrentChange(val) {
-      this.pageIndex = val;
-      this.$nextTick(() => {
-        this.searchTableData();
-      });
-    },
-    getAllQueryData() {
-      const queryData = {
-        pageIndex: this.pageIndex,
-        pageSize: this.pageSize,
-        ...this.form,
-      };
-      {{#each searchFields}}
-      {{#if (eq type "dateRange")}}
-      if (this.form.{{key}} && this.form.{{key}}.length === 2) {
-        queryData.{{key}}Start = this.getTime(this.form.{{key}}[0]);
-        queryData.{{key}}End = this.getTime(this.form.{{key}}[1], true);
-      }
-      delete queryData.{{key}};
-      {{/if}}
-      {{#if (eq type "cascader")}}
-      queryData.{{key}} = this.formatCascaderList(this.form.{{key}});
-      {{/if}}
-      {{/each}}
-      return queryData;
-    },
-    async searchTableData() {
-      const queryData = this.getAllQueryData();
-      try {
-        this.tableLoading = true;
-        // const res = await api.getList(queryData);
-        // this.tableData = res.items;
-        // this.totalPage = res.totalPage;
-        // this.totalNumber = res.totalNumber;
-        this.tableData = [];
-        this.totalPage = 0;
-        this.totalNumber = 0;
-      } catch (err) {
-        console.error(err);
-      } finally {
-        this.tableLoading = false;
-      }
-    },
-    handleDetail(row) {
-      console.log('detail', row);
-    },
-  },
 };
 </script>
 
 <style lang="less" scoped>
 .pg-{{pageNameSlug}} {
-  padding: 10px;
-  background: #f0f0f0;
+    padding: 10px;
+    background: #f0f0f0;
 
-  .content-section {
-    padding: 20px;
-    background: #fff;
-    border-radius: 10px;
+    .content-section {
+        padding: 20px;
+        background: #fff;
+        border-radius: 10px;
 
-    .top-section {
-      padding: 10px 0;
-      border-radius: 8px;
+        .top-section {
+            padding: 10px 0;
+            border-radius: 8px;
 
-      .search-area {
-        display: flex;
-        justify-content: center;
-        margin-top: 10px;
+            .search-area {
+                display: flex;
+                justify-content: center;
+                margin-top: 10px;
 
-        .reset-button {
-          margin-left: 10px;
+                .reset-button {
+                    margin-left: 10px;
+                }
+            }
         }
-      }
-    }
 
-    .table-area {
-      margin-top: 20px;
+        .table-area {
+            margin-top: 20px;
 
-      .pagination-area {
-        display: flex;
-        padding: 10px 0;
-        flex-direction: row-reverse;
-      }
+            .pagination-area {
+                display: flex;
+                padding: 10px 0;
+                flex-direction: row-reverse;
+            }
+        }
     }
-  }
 }
 
 :deep(.el-form-item--small .el-form-item__label) {
-  text-align: right;
+    text-align: right;
 }
 </style>
 `

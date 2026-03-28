@@ -1,4 +1,58 @@
 /**
+ * 表格默认配置（生成器左侧可编辑）
+ */
+export const defaultTableConfig = {
+  fixedHeader: false,
+  height: '440',
+  showSelection: false,
+  showIndex: true,
+  indexLabel: '序号',
+  indexWidth: '60',
+  columns: [
+    {
+      key: 'id',
+      label: 'ID',
+      width: '80',
+      minWidth: '',
+      align: 'center',
+      fixed: '',
+      sortable: false
+    },
+    {
+      key: 'username',
+      label: '用户名',
+      width: '',
+      minWidth: '120',
+      align: 'left',
+      fixed: '',
+      sortable: false
+    },
+    {
+      key: 'status',
+      label: '状态',
+      width: '100',
+      align: 'center',
+      fixed: '',
+      sortable: false
+    }
+  ],
+  mockRows: [
+    { id: 1, username: '张三', status: '启用' },
+    { id: 2, username: '李四', status: '禁用' }
+  ],
+  operation: {
+    enabled: true,
+    label: '操作',
+    width: '180',
+    fixed: 'right',
+    buttons: [
+      { text: '详情', handler: 'handleDetail' },
+      { text: '编辑', handler: 'handleEdit' }
+    ]
+  }
+}
+
+/**
  * 默认示例配置
  */
 export const defaultConfig = {
@@ -27,6 +81,7 @@ export const defaultConfig = {
     }
   ],
   tableColumns: [],
+  table: JSON.parse(JSON.stringify(defaultTableConfig)),
   searchFields: [
     { key: 'keyword', label: '关键词', type: 'input', placeholder: '请输入关键词' },
     { key: 'status', label: '状态', type: 'select', placeholder: '请选择', options: [{ value: 1, label: '启用' }, { value: 0, label: '禁用' }] },

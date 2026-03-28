@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>项目介绍 · 演示与下载</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: linear-gradient(160deg, #0f172a 0%, #134e4a 100%);
+      min-height: 100vh;
+      color: #e2e8f0;
+      padding: 2rem 1.5rem;
+    }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 1.75rem; margin-bottom: 0.5rem; }
+    .sub { color: #94a3b8; margin-bottom: 2rem; font-size: 0.95rem; }
+    .card {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 16px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .card h2 { font-size: 1rem; color: #5eead4; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.08em; }
+    a.btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.25rem;
+      background: #0d9488;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 10px;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    a.btn:hover { background: #14b8a6; }
+    a.btn.secondary {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.25);
+      color: #e2e8f0;
+    }
+    a.btn.secondary:hover { border-color: #5eead4; color: #5eead4; }
+    .hint { font-size: 0.85rem; color: #64748b; margin-top: 1rem; line-height: 1.5; }
+    .row { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+    code { font-size: 0.8rem; background: rgba(0,0,0,0.35); padding: 0.2rem 0.45rem; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>后台管理系统代码生成器</h1>
+    <p class="sub">项目介绍幻灯片 · 浏览器内预览与 PowerPoint 下载</p>
+
+    <div class="card">
+      <h2>下载 PPTX</h2>
+      <p style="margin-bottom:1rem;color:#cbd5e1;font-size:0.95rem;">由 <code>npm run generate:presentation</code> 生成的 10 页演示文稿（PptxGenJS）。</p>
+      <div class="row">
+        <a class="btn" href="./project-intro.pptx" download>下载 project-intro.pptx</a>
+        <a class="btn secondary" href="./project-intro.pptx" target="_blank" rel="noopener">在新标签页打开</a>
+      </div>
+      <p class="hint">若浏览器无法在线预览 .pptx，请下载后用 Microsoft PowerPoint、Keynote 或 WPS 打开。</p>
+    </div>
+
+    <div class="card">
+      <h2>访问方式</h2>
+      <p style="color:#cbd5e1;font-size:0.95rem;line-height:1.6;">
+        开发服务器下打开本页：<br />
+        <code>http://localhost:5173/presentation/</code>
+      </p>
+    </div>
+  </div>
+</body>
+</html>
